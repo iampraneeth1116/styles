@@ -1,15 +1,15 @@
-name: Deploy ShopSmart Server to AWS EC2
+name: Deploy styles Server to AWS EC2
 
 on:
   workflow_dispatch:
   pull_request:
     branches: [main, develop]
     paths:
-      - "shopsmart/server/**"
+      - "styles/server/**"
       - ".github/workflows/deploy.yml"
 
 concurrency:
-  group: deploy-shopsmart-server
+  group: deploy-styles-server
   cancel-in-progress: true
 
 jobs:
@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: shopsmart/server
+        working-directory: styles/server
     steps:
       - uses: actions/checkout@v4
 
@@ -28,7 +28,7 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: shopsmart/server/package-lock.json
+          cache-dependency-path: styles/server/package-lock.json
 
       - name: Install dependencies
         run: npm ci --include=dev
@@ -53,10 +53,10 @@ jobs:
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USERNAME || 'ubuntu' }}
-          SHOPSMART_DEPLOY_PATH: ${{ secrets.SHOPSMART_DEPLOY_PATH || '~/shopsmart' }}
+          styles_DEPLOY_PATH: ${{ secrets.styles_DEPLOY_PATH || '~/styles' }}
           SERVER_ENV: ${{ secrets.SERVER_ENV }}
         run: |
-          RAW_DEPLOY_PATH="${SHOPSMART_DEPLOY_PATH:-~/shopsmart}"
+          RAW_DEPLOY_PATH="${styles_DEPLOY_PATH:-~/styles}"
           REPO_URL="https://github.com/${GITHUB_REPOSITORY}.git"
           BRANCH="${GITHUB_REF_NAME}"
 
@@ -66,8 +66,8 @@ jobs:
           fi
 
           # Copy backend env as a file (safe for multiline secrets)
-          printf "%s" "$SERVER_ENV" > /tmp/shopsmart-server.env
-          scp -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem /tmp/shopsmart-server.env "$EC2_USER@$EC2_HOST:/tmp/shopsmart-server.env"
+          printf "%s" "$SERVER_ENV" > /tmp/styles-server.env
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem /tmp/styles-server.env "$EC2_USER@$EC2_HOST:/tmp/styles-server.env"
 
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem \
             "$EC2_USER@$EC2_HOST" \
@@ -106,19 +106,19 @@ jobs:
           git pull --ff-only origin "$BRANCH"
 
           # Install env file that was copied via scp
-          install -m 600 /tmp/shopsmart-server.env shopsmart/server/.env
+          install -m 600 /tmp/styles-server.env styles/server/.env
 
-          cd shopsmart/server
+          cd styles/server
 
           npm ci --include=dev
           npx prisma generate
           npx prisma db push --accept-data-loss
 
           # Start or reload backend with pm2 (idempotent)
-          pm2 start src/index.js --name shopsmart-api --update-env || pm2 restart shopsmart-api --update-env
+          pm2 start src/index.js --name styles-api --update-env || pm2 restart styles-api --update-env
           pm2 save
 
-          echo "[OK] Deployed ShopSmart backend."
+          echo "[OK] Deployed styles backend."
           EOF
 
       - name: Cleanup SSH key

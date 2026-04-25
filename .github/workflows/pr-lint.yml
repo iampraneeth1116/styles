@@ -16,13 +16,13 @@ jobs:
         node-version: '20'
 
     - name: Check Backend Linting
-      working-directory: ./shopsmart/server
+      working-directory: ./styles/server
       run: |
         npm install
         npm run lint
 
     - name: Check Frontend Linting
-      working-directory: ./shopsmart/client
+      working-directory: ./styles/client
       run: |
         npm install
         npm run lint

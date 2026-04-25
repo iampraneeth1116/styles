@@ -1,0 +1,36 @@
+# Dependencies (re-installed inside the container)
+node_modules
+
+# Environment variables (never bake secrets into the image)
+.env
+.env.*
+
+# Prisma generated client (regenerated during build via postinstall)
+src/generated
+
+# Tests & coverage
+__tests__
+*.test.js
+*.spec.js
+jest.config.js
+
+# Dev tooling
+nodemon.json
+eslint.config.mjs
+prisma.config.ts
+
+# Git
+.git
+.gitignore
+
+# Docker files themselves
+Dockerfile
+.dockerignore
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
