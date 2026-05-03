@@ -14,8 +14,8 @@ jest.unstable_mockModule('../src/config/db.js', () => ({
 }));
 
 // Mock auth middleware
-jest.unstable_mockModule('../src/middleware/auth.js', () => ({
-    requireAuth: (req, res, next) => {
+jest.unstable_mockModule('../src/middleware/authMiddleware.js', () => ({
+    protect: (req, res, next) => {
         req.user = { userId: 'user_1' };
         next();
     }

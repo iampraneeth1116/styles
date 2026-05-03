@@ -28,7 +28,7 @@ describe('Product Controller (Unit)', () => {
     });
 
     it('should return all products via getAllProducts', async () => {
-        const req = {};
+        const req = { query: {} };
         const res = mockRes();
 
         const mockProductsData = [
