@@ -18,20 +18,27 @@ FROM node:22-alpine AS runner
 
 WORKDIR /app
 
-# Install dumb-init for proper signal handling (PID 1 issue)
-RUN apk add --no-cache dumb-init
+# Install dumb-init for proper signal handling (PID 1 issue) and curl for healthcheck
+RUN apk add --no-cache dumb-init curl
 
 ENV NODE_ENV=production
 
 # Copy installed node_modules + generated Prisma client from deps stage
-COPY --from=deps /app/node_modules ./node_modules
+COPY --chown=node:node --from=deps /app/node_modules ./node_modules
 
 # Copy application source
-COPY prisma ./prisma
-COPY src ./src
-COPY package.json ./
+COPY --chown=node:node prisma ./prisma
+COPY --chown=node:node src ./src
+COPY --chown=node:node package.json ./
+
+# Define healthcheck
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:4000/api/health || exit 1
 
 EXPOSE 4000
+
+# Set non-root user
+USER node
 
 # Use dumb-init to handle signals correctly, then run the app
 ENTRYPOINT ["dumb-init", "--"]
