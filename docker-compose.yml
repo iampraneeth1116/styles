@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./styles/server
+      dockerfile: Dockerfile
+    ports:
+      - "4000:4000"
+    env_file:
+      - ./styles/server/.env
+    networks:
+      - app-network
+
+  frontend:
+    build:
+      context: ./styles/client
+      dockerfile: Dockerfile
+    ports:
+      - ${PORT}:${PORT}
+    env_file:
+      - ./styles/client/.env.local
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge

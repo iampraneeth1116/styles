@@ -10,11 +10,13 @@ on:
   workflow_dispatch:
 
 env:
-  ECR_REPOSITORY: shopsmart-backend
+  ECR_BACKEND_REPO: shopsmart-backend
+  ECR_FRONTEND_REPO: shopsmart-frontend
   ECS_CLUSTER: shopsmart-cluster
-  ECS_SERVICE: shopsmart-service
-  ECS_TASK_DEFINITION: .github/task-definition.json
-  CONTAINER_NAME: shopsmart-backend-container
+  BACKEND_SERVICE: shopsmart-backend-service
+  FRONTEND_SERVICE: shopsmart-frontend-service
+  BACKEND_CONTAINER: shopsmart-backend-container
+  FRONTEND_CONTAINER: shopsmart-frontend-container
 
 jobs:
   deploy:
@@ -37,47 +39,66 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build, Tag, and Push Image to ECR
-        id: build-image
+      # ---- BACKEND BUILD & DEPLOY ----
+      - name: Build, Tag, and Push Backend Image
+        id: build-backend
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         working-directory: ./styles/server
         run: |
-          # Build a docker container and push it to ECR
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          docker build -t $ECR_REGISTRY/$ECR_BACKEND_REPO:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_BACKEND_REPO:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$ECR_BACKEND_REPO:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      # Download task definition dynamically (useful if you don't keep it in repo)
-      - name: Download ECS Task Definition
+      - name: Download Backend Task Definition
         run: |
-          aws ecs describe-task-definition --task-definition shopsmart-task --query taskDefinition > task-definition.json
+          aws ecs describe-task-definition --task-definition shopsmart-backend-task --query taskDefinition > backend-task-def.json
 
-      - name: Render new task definition
-        id: task-def
+      - name: Render Backend Task Definition
+        id: backend-task
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: task-definition.json
-          container-name: ${{ env.CONTAINER_NAME }}
-          image: ${{ steps.build-image.outputs.image }}
+          task-definition: backend-task-def.json
+          container-name: ${{ env.BACKEND_CONTAINER }}
+          image: ${{ steps.build-backend.outputs.image }}
 
-      - name: Deploy Amazon ECS task definition
+      - name: Deploy Backend to ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
-          task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: ${{ env.ECS_SERVICE }}
+          task-definition: ${{ steps.backend-task.outputs.task-definition }}
+          service: ${{ env.BACKEND_SERVICE }}
           cluster: ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: true
 
-      - name: Verify Service is Running
+      # ---- FRONTEND BUILD & DEPLOY ----
+      - name: Build, Tag, and Push Frontend Image
+        id: build-frontend
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        working-directory: ./styles/client
         run: |
-          # Grabbing the ALB or public IP depends on the infrastructure setup.
-          # Here we verify the task is running via AWS CLI as a proof of health.
-          TASKS=$(aws ecs list-tasks --cluster ${{ env.ECS_CLUSTER }} --service-name ${{ env.ECS_SERVICE }} --desired-status RUNNING --query 'taskArns' --output text)
-          if [ -z "$TASKS" ]; then
-            echo "No running tasks found for the service!"
-            exit 1
-          else
-            echo "Service is running successfully. Tasks: $TASKS"
-          fi
+          docker build -t $ECR_REGISTRY/$ECR_FRONTEND_REPO:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_FRONTEND_REPO:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$ECR_FRONTEND_REPO:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Download Frontend Task Definition
+        run: |
+          aws ecs describe-task-definition --task-definition shopsmart-frontend-task --query taskDefinition > frontend-task-def.json
+
+      - name: Render Frontend Task Definition
+        id: frontend-task
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: frontend-task-def.json
+          container-name: ${{ env.FRONTEND_CONTAINER }}
+          image: ${{ steps.build-frontend.outputs.image }}
+
+      - name: Deploy Frontend to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.frontend-task.outputs.task-definition }}
+          service: ${{ env.FRONTEND_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
