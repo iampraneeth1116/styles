@@ -53,8 +53,8 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Internal Server Error', message: err.message });
 });
 
-// For local development
-if (process.env.NODE_ENV !== 'production') {
+// For local development (not production, not test)
+if (!['production', 'test'].includes(process.env.NODE_ENV)) {
     app.listen(PORT, () => {
         console.log(`Server running on port ${PORT}`);
     });

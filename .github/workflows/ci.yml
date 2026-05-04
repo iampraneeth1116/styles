@@ -19,6 +19,14 @@ jobs:
         node-version: '20'
 
     # Backend
+    - name: Create server .env
+      working-directory: ./styles/server
+      run: |
+        echo "PORT=4000" > .env
+        echo "CLIENT_URL=http://localhost:3000" >> .env
+        echo "JWT_SECRET=ci_jwt_secret_placeholder" >> .env
+        echo "DATABASE_URL=postgresql://user:password@localhost:5432/testdb" >> .env
+
     - name: Install Backend Dependencies
       working-directory: ./styles/server
       run: npm ci
@@ -32,6 +40,11 @@ jobs:
       run: npm run test --if-present
 
     # Frontend
+    - name: Create client .env.local
+      working-directory: ./styles/client
+      run: |
+        echo "NEXT_PUBLIC_API_URL=http://localhost:4000/api" > .env.local
+
     - name: Install Frontend Dependencies
       working-directory: ./styles/client
       run: npm ci
