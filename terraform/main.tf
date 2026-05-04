@@ -48,3 +48,18 @@ resource "aws_s3_bucket_public_access_block" "rubric_bucket_public_access_block"
   ignore_public_acls      = true
   restrict_public_buckets = true
 }
+
+# 5. ECR Repository for Docker Image
+resource "aws_ecr_repository" "shopsmart_backend" {
+  name                 = "shopsmart-backend"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
+# 6. ECS Cluster
+resource "aws_ecs_cluster" "shopsmart_cluster" {
+  name = "shopsmart-cluster"
+}
