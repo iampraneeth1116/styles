@@ -25,10 +25,10 @@ jobs:
         echo "NEXT_PUBLIC_API_URL=http://localhost:4000/api" > .env.local
     - name: Install server dependencies
       working-directory: ./styles/server
-      run: npm ci
+      run: npm install
     - name: Install client dependencies
       working-directory: ./styles/client
-      run: npm ci
+      run: npm install
     - name: Install Playwright Browsers
       working-directory: ./styles/client
       run: npx playwright install --with-deps
