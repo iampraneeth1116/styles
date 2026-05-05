@@ -51,15 +51,11 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_BACKEND_REPO:$IMAGE_TAG
           echo "image=$ECR_REGISTRY/$ECR_BACKEND_REPO:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Download Backend Task Definition
-        run: |
-          aws ecs describe-task-definition --task-definition shopsmart-backend-task --query taskDefinition > backend-task-def.json
-
       - name: Render Backend Task Definition
         id: backend-task
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: backend-task-def.json
+          task-definition: .github/backend-task-def.json
           container-name: ${{ env.BACKEND_CONTAINER }}
           image: ${{ steps.build-backend.outputs.image }}
 
@@ -83,15 +79,11 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_FRONTEND_REPO:$IMAGE_TAG
           echo "image=$ECR_REGISTRY/$ECR_FRONTEND_REPO:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Download Frontend Task Definition
-        run: |
-          aws ecs describe-task-definition --task-definition shopsmart-frontend-task --query taskDefinition > frontend-task-def.json
-
       - name: Render Frontend Task Definition
         id: frontend-task
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: frontend-task-def.json
+          task-definition: .github/frontend-task-def.json
           container-name: ${{ env.FRONTEND_CONTAINER }}
           image: ${{ steps.build-frontend.outputs.image }}
 

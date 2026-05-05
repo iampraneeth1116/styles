@@ -28,9 +28,20 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
+      - name: Ensure Terraform State Bucket Exists
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          if ! aws s3api head-bucket --bucket shopsmart-tfstate-praneeth1116 2>/dev/null; then
+            echo "Bucket does not exist. Creating..."
+            aws s3api create-bucket --bucket shopsmart-tfstate-praneeth1116 --region $AWS_REGION --create-bucket-configuration LocationConstraint=$AWS_REGION
+          else
+            echo "Bucket already exists."
+          fi
+
       - name: Terraform Init
         working-directory: ./terraform
-        run: terraform init
+        run: terraform init -backend-config="region=${{ secrets.AWS_REGION }}"
 
       - name: Terraform Validate
         working-directory: ./terraform

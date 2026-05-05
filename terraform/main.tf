@@ -5,6 +5,13 @@ terraform {
       version = "~> 5.0"
     }
   }
+
+  backend "s3" {
+    bucket  = "shopsmart-tfstate-praneeth1116"
+    key     = "state/terraform.tfstate"
+    encrypt = true
+    # Region is passed via GitHub Actions dynamically
+  }
 }
 
 provider "aws" {
