@@ -121,13 +121,14 @@ resource "aws_security_group" "ecs_sg" {
 }
 
 # --- 9. Dummy Task Definitions for Initial Service Creation ---
-resource "aws_ecs_task_definition" "dummy_backend" {
-  family                   = "shopsmart-backend-task"
+resource "aws_ecs_task_definition" "dummy_task" {
+  family                   = "shopsmart-task"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = "256"
-  memory                   = "512"
+  cpu                      = "512"
+  memory                   = "1024"
   execution_role_arn       = "arn:aws:iam::065624034072:role/LabRole"
+  task_role_arn            = "arn:aws:iam::065624034072:role/LabRole"
   container_definitions = jsonencode([
     {
       name      = "shopsmart-backend-container"
@@ -139,18 +140,7 @@ resource "aws_ecs_task_definition" "dummy_backend" {
           hostPort      = 4000
         }
       ]
-    }
-  ])
-}
-
-resource "aws_ecs_task_definition" "dummy_frontend" {
-  family                   = "shopsmart-frontend-task"
-  network_mode             = "awsvpc"
-  requires_compatibilities = ["FARGATE"]
-  cpu                      = "256"
-  memory                   = "512"
-  execution_role_arn       = "arn:aws:iam::065624034072:role/LabRole"
-  container_definitions = jsonencode([
+    },
     {
       name      = "shopsmart-frontend-container"
       image     = "nginx:latest"
@@ -165,55 +155,11 @@ resource "aws_ecs_task_definition" "dummy_frontend" {
   ])
 }
 
-# --- 9.5 Service Discovery ---
-resource "aws_service_discovery_private_dns_namespace" "shopsmart" {
-  name        = "shopsmart.local"
-  vpc         = data.aws_vpc.default.id
-  description = "Shopsmart internal DNS"
-}
-
-resource "aws_service_discovery_service" "backend" {
-  name = "backend"
-  dns_config {
-    namespace_id = aws_service_discovery_private_dns_namespace.shopsmart.id
-    dns_records {
-      ttl  = 10
-      type = "A"
-    }
-    routing_policy = "MULTIVALUE"
-  }
-  health_check_custom_config {
-    failure_threshold = 1
-  }
-}
-
 # --- 10. ECS Services ---
-resource "aws_ecs_service" "backend_service" {
-  name            = "shopsmart-backend-service"
+resource "aws_ecs_service" "shopsmart_service" {
+  name            = "shopsmart-service"
   cluster         = aws_ecs_cluster.shopsmart_cluster.id
-  task_definition = aws_ecs_task_definition.dummy_backend.arn
-  launch_type     = "FARGATE"
-  desired_count   = 1
-
-  network_configuration {
-    subnets          = data.aws_subnets.default.ids
-    security_groups  = [aws_security_group.ecs_sg.id]
-    assign_public_ip = true
-  }
-
-  service_registries {
-    registry_arn = aws_service_discovery_service.backend.arn
-  }
-
-  lifecycle {
-    ignore_changes = [task_definition, desired_count]
-  }
-}
-
-resource "aws_ecs_service" "frontend_service" {
-  name            = "shopsmart-frontend-service"
-  cluster         = aws_ecs_cluster.shopsmart_cluster.id
-  task_definition = aws_ecs_task_definition.dummy_frontend.arn
+  task_definition = aws_ecs_task_definition.dummy_task.arn
   launch_type     = "FARGATE"
   desired_count   = 1
 
