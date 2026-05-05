@@ -1,0 +1,46 @@
+{
+  "family": "shopsmart-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::065624034072:role/LabRole",
+  "taskRoleArn": "arn:aws:iam::065624034072:role/LabRole",
+  "containerDefinitions": [
+    {
+      "name": "shopsmart-backend-container",
+      "image": "nginx:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 4000,
+          "hostPort": 4000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "PORT", "value": "4000" },
+        { "name": "NODE_ENV", "value": "production" },
+        { "name": "JWT_SECRET", "value": "ci_jwt_secret_placeholder" },
+        { "name": "DATABASE_URL", "value": "postgresql://postgres:postgres@localhost:5432/shopsmart" }
+      ]
+    },
+    {
+      "name": "shopsmart-frontend-container",
+      "image": "nginx:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "hostPort": 3000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "PORT", "value": "3000" },
+        { "name": "NODE_ENV", "value": "production" },
+        { "name": "NEXT_PUBLIC_API_URL", "value": "/api" }
+      ]
+    }
+  ]
+}
