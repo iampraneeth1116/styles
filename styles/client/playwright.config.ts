@@ -17,7 +17,7 @@ export default defineConfig({
             timeout: 120000,
         },
         {
-            command: 'npm run build && npm run start',
+            command: 'npm run build && PORT=3000 node .next/standalone/server.js',
             port: 3000,
             reuseExistingServer: !process.env.CI,
             timeout: 120000,
