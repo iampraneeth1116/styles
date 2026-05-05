@@ -227,13 +227,17 @@ jobs:
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
       - name: Render Backend Task Definition
         id: backend-task
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
           task-definition: .github/shopsmart-task-def.json
           container-name: ${{ env.BACKEND_CONTAINER }}
-          image: ${{ needs.build_backend.outputs.image }}
+          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND_REPO }}:${{ github.sha }}
 
       - name: Render Frontend Task Definition
         id: frontend-task
@@ -241,7 +245,7 @@ jobs:
         with:
           task-definition: ${{ steps.backend-task.outputs.task-definition }}
           container-name: ${{ env.FRONTEND_CONTAINER }}
-          image: ${{ needs.build_frontend.outputs.image }}
+          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPO }}:${{ github.sha }}
 
       - name: Deploy Unified Task to ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
