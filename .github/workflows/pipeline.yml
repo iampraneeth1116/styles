@@ -121,6 +121,15 @@ jobs:
         working-directory: ./terraform
         run: terraform init -backend-config="region=${{ secrets.AWS_REGION }}"
 
+      - name: Terraform Import Existing Resources
+        working-directory: ./terraform
+        run: |
+          # Attempt to import existing resources into the new state file.
+          # The '|| true' ensures the pipeline continues if the resource doesn't exist yet (e.g., on a fresh run).
+          terraform import aws_ecr_repository.shopsmart_backend shopsmart-backend || true
+          terraform import aws_ecr_repository.shopsmart_frontend shopsmart-frontend || true
+          terraform import aws_ecs_cluster.shopsmart_cluster shopsmart-cluster || true
+
       - name: Terraform Validate
         working-directory: ./terraform
         run: terraform validate
