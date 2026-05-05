@@ -1,0 +1,213 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+env:
+  ECR_BACKEND_REPO: shopsmart-backend
+  ECR_FRONTEND_REPO: shopsmart-frontend
+  ECS_CLUSTER: shopsmart-cluster
+  BACKEND_SERVICE: shopsmart-backend-service
+  FRONTEND_SERVICE: shopsmart-frontend-service
+  BACKEND_CONTAINER: shopsmart-backend-container
+  FRONTEND_CONTAINER: shopsmart-frontend-container
+
+jobs:
+  # ==========================================
+  # PHASE 1: TESTING & LINTING
+  # ==========================================
+  test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Backend
+      - name: Create server .env
+        working-directory: ./styles/server
+        run: |
+          echo "PORT=4000" > .env
+          echo "CLIENT_URL=http://localhost:3000" >> .env
+          echo "JWT_SECRET=ci_jwt_secret_placeholder" >> .env
+          echo "DATABASE_URL=postgresql://user:password@localhost:5432/testdb" >> .env
+
+      - name: Install Backend Dependencies
+        working-directory: ./styles/server
+        run: npm install
+
+      - name: Run Backend Linter
+        working-directory: ./styles/server
+        run: npm run lint --if-present
+
+      - name: Run Backend Tests
+        working-directory: ./styles/server
+        run: npm run test --if-present
+
+      - name: Upload Backend Test Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: server-test-report
+          path: styles/server/reports/server-test-report.xml
+
+      # Frontend
+      - name: Create client .env.local
+        working-directory: ./styles/client
+        run: |
+          echo "NEXT_PUBLIC_API_URL=http://localhost:4000/api" > .env.local
+
+      - name: Install Frontend Dependencies
+        working-directory: ./styles/client
+        run: npm install
+
+      - name: Run Frontend Linter
+        working-directory: ./styles/client
+        run: npm run lint --if-present
+
+      - name: Run Frontend Tests
+        working-directory: ./styles/client
+        run: npm run test --if-present
+
+      - name: Upload Frontend Test Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: client-test-report
+          path: styles/client/reports/client-test-report.xml
+
+  # ==========================================
+  # PHASE 2: INFRASTRUCTURE (TERRAFORM)
+  # ==========================================
+  infrastructure:
+    name: Terraform Apply
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Ensure Terraform State Bucket Exists
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          if ! aws s3api head-bucket --bucket shopsmart-tfstate-praneeth1116 2>/dev/null; then
+            echo "Bucket does not exist. Creating..."
+            aws s3api create-bucket --bucket shopsmart-tfstate-praneeth1116 --region $AWS_REGION --create-bucket-configuration LocationConstraint=$AWS_REGION
+          else
+            echo "Bucket already exists."
+          fi
+
+      - name: Terraform Init
+        working-directory: ./terraform
+        run: terraform init -backend-config="region=${{ secrets.AWS_REGION }}"
+
+      - name: Terraform Validate
+        working-directory: ./terraform
+        run: terraform validate
+
+      - name: Terraform Plan
+        working-directory: ./terraform
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: ./terraform
+        run: terraform apply -auto-approve tfplan
+
+  # ==========================================
+  # PHASE 3: CONTAINER BUILD & ECS DEPLOY
+  # ==========================================
+  deploy:
+    name: ECS Build & Deploy
+    needs: infrastructure
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # ---- BACKEND BUILD & DEPLOY ----
+      - name: Build, Tag, and Push Backend Image
+        id: build-backend
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        working-directory: ./styles/server
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_BACKEND_REPO:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_BACKEND_REPO:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$ECR_BACKEND_REPO:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Render Backend Task Definition
+        id: backend-task
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: .github/backend-task-def.json
+          container-name: ${{ env.BACKEND_CONTAINER }}
+          image: ${{ steps.build-backend.outputs.image }}
+
+      - name: Deploy Backend to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.backend-task.outputs.task-definition }}
+          service: ${{ env.BACKEND_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      # ---- FRONTEND BUILD & DEPLOY ----
+      - name: Build, Tag, and Push Frontend Image
+        id: build-frontend
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        working-directory: ./styles/client
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_FRONTEND_REPO:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_FRONTEND_REPO:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$ECR_FRONTEND_REPO:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Render Frontend Task Definition
+        id: frontend-task
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: .github/frontend-task-def.json
+          container-name: ${{ env.FRONTEND_CONTAINER }}
+          image: ${{ steps.build-frontend.outputs.image }}
+
+      - name: Deploy Frontend to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.frontend-task.outputs.task-definition }}
+          service: ${{ env.FRONTEND_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
