@@ -80,3 +80,124 @@ resource "aws_ecr_repository" "shopsmart_frontend" {
 resource "aws_ecs_cluster" "shopsmart_cluster" {
   name = "shopsmart-cluster"
 }
+
+# --- 8. Networking for Fargate ---
+data "aws_vpc" "default" {
+  default = true
+}
+
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+}
+
+resource "aws_security_group" "ecs_sg" {
+  name        = "shopsmart-ecs-tasks-sg"
+  description = "Allow inbound traffic on ports 3000 and 4000"
+  vpc_id      = data.aws_vpc.default.id
+
+  ingress {
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 4000
+    to_port     = 4000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# --- 9. Dummy Task Definitions for Initial Service Creation ---
+resource "aws_ecs_task_definition" "dummy_backend" {
+  family                   = "shopsmart-backend-task"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = "256"
+  memory                   = "512"
+  execution_role_arn       = "arn:aws:iam::065624034072:role/LabRole"
+  container_definitions = jsonencode([
+    {
+      name      = "shopsmart-backend-container"
+      image     = "nginx:latest"
+      essential = true
+      portMappings = [
+        {
+          containerPort = 4000
+          hostPort      = 4000
+        }
+      ]
+    }
+  ])
+}
+
+resource "aws_ecs_task_definition" "dummy_frontend" {
+  family                   = "shopsmart-frontend-task"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = "256"
+  memory                   = "512"
+  execution_role_arn       = "arn:aws:iam::065624034072:role/LabRole"
+  container_definitions = jsonencode([
+    {
+      name      = "shopsmart-frontend-container"
+      image     = "nginx:latest"
+      essential = true
+      portMappings = [
+        {
+          containerPort = 3000
+          hostPort      = 3000
+        }
+      ]
+    }
+  ])
+}
+
+# --- 10. ECS Services ---
+resource "aws_ecs_service" "backend_service" {
+  name            = "shopsmart-backend-service"
+  cluster         = aws_ecs_cluster.shopsmart_cluster.id
+  task_definition = aws_ecs_task_definition.dummy_backend.arn
+  launch_type     = "FARGATE"
+  desired_count   = 1
+
+  network_configuration {
+    subnets          = data.aws_subnets.default.ids
+    security_groups  = [aws_security_group.ecs_sg.id]
+    assign_public_ip = true
+  }
+
+  lifecycle {
+    ignore_changes = [task_definition, desired_count]
+  }
+}
+
+resource "aws_ecs_service" "frontend_service" {
+  name            = "shopsmart-frontend-service"
+  cluster         = aws_ecs_cluster.shopsmart_cluster.id
+  task_definition = aws_ecs_task_definition.dummy_frontend.arn
+  launch_type     = "FARGATE"
+  desired_count   = 1
+
+  network_configuration {
+    subnets          = data.aws_subnets.default.ids
+    security_groups  = [aws_security_group.ecs_sg.id]
+    assign_public_ip = true
+  }
+
+  lifecycle {
+    ignore_changes = [task_definition, desired_count]
+  }
+}
