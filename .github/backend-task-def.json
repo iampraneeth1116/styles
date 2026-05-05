@@ -16,7 +16,13 @@
           "protocol": "tcp"
         }
       ],
-      "essential": true
+      "essential": true,
+      "environment": [
+        { "name": "PORT", "value": "4000" },
+        { "name": "CLIENT_URL", "value": "http://localhost:3000" },
+        { "name": "NODE_ENV", "value": "production" },
+        { "name": "DATABASE_URL", "value": "postgresql://neondb_owner:npg_QYjT8IBzgh7W@ep-icy-hall-ad4y9imn-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require" }
+      ]
     }
   ]
 }

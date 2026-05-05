@@ -191,7 +191,7 @@ jobs:
           task-definition: ${{ steps.backend-task.outputs.task-definition }}
           service: ${{ env.BACKEND_SERVICE }}
           cluster: ${{ env.ECS_CLUSTER }}
-          wait-for-service-stability: true
+          wait-for-service-stability: false
 
       # ---- FRONTEND BUILD & DEPLOY ----
       - name: Build, Tag, and Push Frontend Image
@@ -219,4 +219,4 @@ jobs:
           task-definition: ${{ steps.frontend-task.outputs.task-definition }}
           service: ${{ env.FRONTEND_SERVICE }}
           cluster: ${{ env.ECS_CLUSTER }}
-          wait-for-service-stability: true
+          wait-for-service-stability: false
