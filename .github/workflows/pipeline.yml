@@ -145,11 +145,13 @@ jobs:
   # ==========================================
   # PHASE 3: CONTAINER BUILD & ECS DEPLOY
   # ==========================================
-  deploy_backend:
-    name: ECS Build & Deploy Backend
+  build_backend:
+    name: Build Backend Image
     needs: infrastructure
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    outputs:
+      image: ${{ steps.build-backend.outputs.image }}
     steps:
       - uses: actions/checkout@v4
 
@@ -176,27 +178,13 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_BACKEND_REPO:$IMAGE_TAG
           echo "image=$ECR_REGISTRY/$ECR_BACKEND_REPO:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Render Backend Task Definition
-        id: backend-task
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
-        with:
-          task-definition: .github/backend-task-def.json
-          container-name: ${{ env.BACKEND_CONTAINER }}
-          image: ${{ steps.build-backend.outputs.image }}
-
-      - name: Deploy Backend to ECS
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-        with:
-          task-definition: ${{ steps.backend-task.outputs.task-definition }}
-          service: ${{ env.BACKEND_SERVICE }}
-          cluster: ${{ env.ECS_CLUSTER }}
-          wait-for-service-stability: false
-
-  deploy_frontend:
-    name: ECS Build & Deploy Frontend
+  build_frontend:
+    name: Build Frontend Image
     needs: infrastructure
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    outputs:
+      image: ${{ steps.build-frontend.outputs.image }}
     steps:
       - uses: actions/checkout@v4
 
@@ -223,18 +211,42 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_FRONTEND_REPO:$IMAGE_TAG
           echo "image=$ECR_REGISTRY/$ECR_FRONTEND_REPO:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
+  deploy:
+    name: Deploy Unified Service
+    needs: [build_backend, build_frontend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Render Backend Task Definition
+        id: backend-task
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: .github/shopsmart-task-def.json
+          container-name: ${{ env.BACKEND_CONTAINER }}
+          image: ${{ needs.build_backend.outputs.image }}
+
       - name: Render Frontend Task Definition
         id: frontend-task
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: .github/frontend-task-def.json
+          task-definition: ${{ steps.backend-task.outputs.task-definition }}
           container-name: ${{ env.FRONTEND_CONTAINER }}
-          image: ${{ steps.build-frontend.outputs.image }}
+          image: ${{ needs.build_frontend.outputs.image }}
 
-      - name: Deploy Frontend to ECS
+      - name: Deploy Unified Task to ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.frontend-task.outputs.task-definition }}
-          service: ${{ env.FRONTEND_SERVICE }}
+          service: shopsmart-service
           cluster: ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: false
