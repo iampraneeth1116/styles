@@ -63,7 +63,7 @@ jobs:
       - name: Create client .env.local
         working-directory: ./styles/client
         run: |
-          echo "NEXT_PUBLIC_API_URL=http://localhost:4000/api" > .env.local
+          echo "NEXT_PUBLIC_API_URL=/api" > .env.local
 
       - name: Install Frontend Dependencies
         working-directory: ./styles/client

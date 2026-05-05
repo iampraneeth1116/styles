@@ -165,6 +165,28 @@ resource "aws_ecs_task_definition" "dummy_frontend" {
   ])
 }
 
+# --- 9.5 Service Discovery ---
+resource "aws_service_discovery_private_dns_namespace" "shopsmart" {
+  name        = "shopsmart.local"
+  vpc         = data.aws_vpc.default.id
+  description = "Shopsmart internal DNS"
+}
+
+resource "aws_service_discovery_service" "backend" {
+  name = "backend"
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.shopsmart.id
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+    routing_policy = "MULTIVALUE"
+  }
+  health_check_custom_config {
+    failure_threshold = 1
+  }
+}
+
 # --- 10. ECS Services ---
 resource "aws_ecs_service" "backend_service" {
   name            = "shopsmart-backend-service"
@@ -177,6 +199,10 @@ resource "aws_ecs_service" "backend_service" {
     subnets          = data.aws_subnets.default.ids
     security_groups  = [aws_security_group.ecs_sg.id]
     assign_public_ip = true
+  }
+
+  service_registries {
+    registry_arn = aws_service_discovery_service.backend.arn
   }
 
   lifecycle {
