@@ -145,8 +145,8 @@ jobs:
   # ==========================================
   # PHASE 3: CONTAINER BUILD & ECS DEPLOY
   # ==========================================
-  deploy:
-    name: ECS Build & Deploy
+  deploy_backend:
+    name: ECS Build & Deploy Backend
     needs: infrastructure
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
@@ -165,7 +165,6 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # ---- BACKEND BUILD & DEPLOY ----
       - name: Build, Tag, and Push Backend Image
         id: build-backend
         env:
@@ -193,7 +192,26 @@ jobs:
           cluster: ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: false
 
-      # ---- FRONTEND BUILD & DEPLOY ----
+  deploy_frontend:
+    name: ECS Build & Deploy Frontend
+    needs: infrastructure
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
       - name: Build, Tag, and Push Frontend Image
         id: build-frontend
         env:
