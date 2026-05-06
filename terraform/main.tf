@@ -125,11 +125,22 @@ resource "aws_ecs_task_definition" "dummy_task" {
   family                   = "shopsmart-task"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = "512"
-  memory                   = "1024"
+  cpu                      = "1024"
+  memory                   = "2048"
   execution_role_arn       = "arn:aws:iam::065624034072:role/LabRole"
   task_role_arn            = "arn:aws:iam::065624034072:role/LabRole"
   container_definitions = jsonencode([
+    {
+      name      = "shopsmart-postgres-container"
+      image     = "postgres:16-alpine"
+      essential = true
+      portMappings = [
+        {
+          containerPort = 5432
+          hostPort      = 5432
+        }
+      ]
+    },
     {
       name      = "shopsmart-backend-container"
       image     = "nginx:latest"

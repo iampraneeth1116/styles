@@ -124,11 +124,10 @@ jobs:
       - name: Terraform Import Existing Resources
         working-directory: ./terraform
         run: |
-          # Attempt to import existing resources into the new state file.
-          # The '|| true' ensures the pipeline continues if the resource doesn't exist yet (e.g., on a fresh run).
-          terraform import aws_ecr_repository.shopsmart_backend shopsmart-backend || true
-          terraform import aws_ecr_repository.shopsmart_frontend shopsmart-frontend || true
-          terraform import aws_ecs_cluster.shopsmart_cluster shopsmart-cluster || true
+          # Only import if resource is NOT already tracked in state (prevents "already managed" errors)
+          terraform state show aws_ecr_repository.shopsmart_backend > /dev/null 2>&1 || terraform import aws_ecr_repository.shopsmart_backend shopsmart-backend || true
+          terraform state show aws_ecr_repository.shopsmart_frontend > /dev/null 2>&1 || terraform import aws_ecr_repository.shopsmart_frontend shopsmart-frontend || true
+          terraform state show aws_ecs_cluster.shopsmart_cluster > /dev/null 2>&1 || terraform import aws_ecs_cluster.shopsmart_cluster shopsmart-cluster || true
 
       - name: Terraform Validate
         working-directory: ./terraform

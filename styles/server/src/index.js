@@ -53,12 +53,10 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Internal Server Error', message: err.message });
 });
 
-// For local development (not production, not test)
-if (!['production', 'test'].includes(process.env.NODE_ENV)) {
-    app.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`);
-    });
-}
+// Start the server (always listen — required for ECS/Docker healthcheck)
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
 
-// Export for Vercel serverless
+// Export for Vercel serverless / testing
 export default app;

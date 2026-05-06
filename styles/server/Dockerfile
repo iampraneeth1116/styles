@@ -40,6 +40,7 @@ EXPOSE 4000
 # Set non-root user
 USER node
 
-# Use dumb-init to handle signals correctly, then run the app
+# Use dumb-init to handle signals correctly
+# Run prisma migrate deploy first to ensure DB schema exists, then start the app
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["node", "src/index.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node src/index.js"]

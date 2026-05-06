@@ -2,11 +2,35 @@
   "family": "shopsmart-task",
   "networkMode": "awsvpc",
   "requiresCompatibilities": ["FARGATE"],
-  "cpu": "512",
-  "memory": "1024",
+  "cpu": "1024",
+  "memory": "2048",
   "executionRoleArn": "arn:aws:iam::065624034072:role/LabRole",
   "taskRoleArn": "arn:aws:iam::065624034072:role/LabRole",
   "containerDefinitions": [
+    {
+      "name": "shopsmart-postgres-container",
+      "image": "postgres:16-alpine",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 5432,
+          "hostPort": 5432,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "POSTGRES_USER", "value": "postgres" },
+        { "name": "POSTGRES_PASSWORD", "value": "postgres" },
+        { "name": "POSTGRES_DB", "value": "shopsmart" }
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "pg_isready -U postgres"],
+        "interval": 10,
+        "timeout": 5,
+        "retries": 5,
+        "startPeriod": 10
+      }
+    },
     {
       "name": "shopsmart-backend-container",
       "image": "nginx:latest",
@@ -22,7 +46,14 @@
         { "name": "PORT", "value": "4000" },
         { "name": "NODE_ENV", "value": "production" },
         { "name": "JWT_SECRET", "value": "ci_jwt_secret_placeholder" },
-        { "name": "DATABASE_URL", "value": "postgresql://postgres:postgres@localhost:5432/shopsmart" }
+        { "name": "DATABASE_URL", "value": "postgresql://postgres:postgres@localhost:5432/shopsmart" },
+        { "name": "CLIENT_URL", "value": "http://localhost:3000" }
+      ],
+      "dependsOn": [
+        {
+          "containerName": "shopsmart-postgres-container",
+          "condition": "HEALTHY"
+        }
       ]
     },
     {
@@ -40,6 +71,12 @@
         { "name": "PORT", "value": "3000" },
         { "name": "NODE_ENV", "value": "production" },
         { "name": "NEXT_PUBLIC_API_URL", "value": "/api" }
+      ],
+      "dependsOn": [
+        {
+          "containerName": "shopsmart-backend-container",
+          "condition": "START"
+        }
       ]
     }
   ]
