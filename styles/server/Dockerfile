@@ -41,6 +41,6 @@ EXPOSE 4000
 USER node
 
 # Use dumb-init to handle signals correctly
-# Run prisma migrate deploy first to ensure DB schema exists, then start the app
+# Push schema to DB first (no migration files exist — project uses db push), then start the app
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["sh", "-c", "npx prisma migrate deploy && node src/index.js"]
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && node src/index.js"]
