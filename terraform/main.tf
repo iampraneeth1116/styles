@@ -120,30 +120,19 @@ resource "aws_security_group" "ecs_sg" {
   }
 }
 
-# --- 9. Dummy Task Definitions for Initial Service Creation ---
-resource "aws_ecs_task_definition" "dummy_task" {
-  family                   = "shopsmart-task"
+# --- 9. Task Definitions ---
+resource "aws_ecs_task_definition" "backend_task" {
+  family                   = "shopsmart-backend-task"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = "1024"
-  memory                   = "2048"
+  cpu                      = "512"
+  memory                   = "1024"
   execution_role_arn       = "arn:aws:iam::065624034072:role/LabRole"
   task_role_arn            = "arn:aws:iam::065624034072:role/LabRole"
   container_definitions = jsonencode([
     {
-      name      = "shopsmart-postgres-container"
-      image     = "postgres:16-alpine"
-      essential = true
-      portMappings = [
-        {
-          containerPort = 5432
-          hostPort      = 5432
-        }
-      ]
-    },
-    {
       name      = "shopsmart-backend-container"
-      image     = "nginx:latest"
+      image     = "nginx:latest" # Replaced by GitHub Actions
       essential = true
       portMappings = [
         {
@@ -151,10 +140,27 @@ resource "aws_ecs_task_definition" "dummy_task" {
           hostPort      = 4000
         }
       ]
-    },
+      environment = [
+        { name = "DATABASE_URL", value = var.database_url },
+        { name = "JWT_SECRET", value = var.jwt_secret },
+        { name = "PORT", value = "4000" }
+      ]
+    }
+  ])
+}
+
+resource "aws_ecs_task_definition" "frontend_task" {
+  family                   = "shopsmart-frontend-task"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = "512"
+  memory                   = "1024"
+  execution_role_arn       = "arn:aws:iam::065624034072:role/LabRole"
+  task_role_arn            = "arn:aws:iam::065624034072:role/LabRole"
+  container_definitions = jsonencode([
     {
       name      = "shopsmart-frontend-container"
-      image     = "nginx:latest"
+      image     = "nginx:latest" # Replaced by GitHub Actions
       essential = true
       portMappings = [
         {
@@ -162,15 +168,36 @@ resource "aws_ecs_task_definition" "dummy_task" {
           hostPort      = 3000
         }
       ]
+      environment = [
+        { name = "PORT", value = "3000" }
+      ]
     }
   ])
 }
 
 # --- 10. ECS Services ---
-resource "aws_ecs_service" "shopsmart_service" {
-  name            = "shopsmart-service"
+resource "aws_ecs_service" "backend_service" {
+  name            = "shopsmart-backend-service"
   cluster         = aws_ecs_cluster.shopsmart_cluster.id
-  task_definition = aws_ecs_task_definition.dummy_task.arn
+  task_definition = aws_ecs_task_definition.backend_task.arn
+  launch_type     = "FARGATE"
+  desired_count   = 1
+
+  network_configuration {
+    subnets          = data.aws_subnets.default.ids
+    security_groups  = [aws_security_group.ecs_sg.id]
+    assign_public_ip = true
+  }
+
+  lifecycle {
+    ignore_changes = [task_definition, desired_count]
+  }
+}
+
+resource "aws_ecs_service" "frontend_service" {
+  name            = "shopsmart-frontend-service"
+  cluster         = aws_ecs_cluster.shopsmart_cluster.id
+  task_definition = aws_ecs_task_definition.frontend_task.arn
   launch_type     = "FARGATE"
   desired_count   = 1
 

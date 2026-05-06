@@ -17,9 +17,6 @@ env:
   FRONTEND_CONTAINER: shopsmart-frontend-container
 
 jobs:
-  # ==========================================
-  # PHASE 1: TESTING & LINTING
-  # ==========================================
   test:
     name: Build & Test
     runs-on: ubuntu-latest
@@ -35,14 +32,18 @@ jobs:
       - name: Create server .env
         working-directory: ./styles/server
         run: |
-          echo "PORT=4000" > .env
-          echo "CLIENT_URL=http://localhost:3000" >> .env
-          echo "JWT_SECRET=ci_jwt_secret_placeholder" >> .env
-          echo "DATABASE_URL=postgresql://user:password@localhost:5432/testdb" >> .env
+          if [ -n "${{ secrets.APP_ENV }}" ]; then
+            printf '%s\n' "${{ secrets.APP_ENV }}" > .env
+          else
+            echo "PORT=4000" > .env
+            echo "CLIENT_URL=http://localhost:3000" >> .env
+            echo "JWT_SECRET=ci_jwt_secret_placeholder" >> .env
+            echo "DATABASE_URL=postgresql://dummy:dummy@localhost:5432/testdb" >> .env
+          fi
 
       - name: Install Backend Dependencies
         working-directory: ./styles/server
-        run: npm install
+        run: npm ci || npm install
 
       - name: Run Backend Linter
         working-directory: ./styles/server
@@ -67,7 +68,7 @@ jobs:
 
       - name: Install Frontend Dependencies
         working-directory: ./styles/client
-        run: npm install
+        run: npm ci || npm install
 
       - name: Run Frontend Linter
         working-directory: ./styles/client
@@ -84,9 +85,6 @@ jobs:
           name: client-test-report
           path: styles/client/reports/client-test-report.xml
 
-  # ==========================================
-  # PHASE 2: INFRASTRUCTURE (TERRAFORM)
-  # ==========================================
   infrastructure:
     name: Terraform Apply
     needs: test
@@ -103,9 +101,6 @@ jobs:
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
       - name: Ensure Terraform State Bucket Exists
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
@@ -117,6 +112,22 @@ jobs:
             echo "Bucket already exists."
           fi
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Parse APP_ENV into Terraform vars
+        run: |
+          ENV_CONTENT="${{ secrets.APP_ENV }}"
+          DB_URL=$(echo "$ENV_CONTENT" | awk -F= '/^DATABASE_URL=/{print $2}' | head -1)
+          JWT=$(echo "$ENV_CONTENT" | awk -F= '/^JWT_SECRET=/{print $2}' | head -1 | tr -d "'\"")
+          if [ -z "$DB_URL" ] || [ -z "$JWT" ]; then
+            echo "Using defaults for terraform validation."
+            DB_URL="postgresql://dummy:dummy@localhost/dummy"
+            JWT="dummy_secret"
+          fi
+          echo "TF_VAR_database_url=$DB_URL" >> $GITHUB_ENV
+          echo "TF_VAR_jwt_secret=$JWT" >> $GITHUB_ENV
+
       - name: Terraform Init
         working-directory: ./terraform
         run: terraform init -backend-config="region=${{ secrets.AWS_REGION }}"
@@ -124,7 +135,6 @@ jobs:
       - name: Terraform Import Existing Resources
         working-directory: ./terraform
         run: |
-          # Only import if resource is NOT already tracked in state (prevents "already managed" errors)
           terraform state show aws_ecr_repository.shopsmart_backend > /dev/null 2>&1 || terraform import aws_ecr_repository.shopsmart_backend shopsmart-backend || true
           terraform state show aws_ecr_repository.shopsmart_frontend > /dev/null 2>&1 || terraform import aws_ecr_repository.shopsmart_frontend shopsmart-frontend || true
           terraform state show aws_ecs_cluster.shopsmart_cluster > /dev/null 2>&1 || terraform import aws_ecs_cluster.shopsmart_cluster shopsmart-cluster || true
@@ -141,16 +151,11 @@ jobs:
         working-directory: ./terraform
         run: terraform apply -auto-approve tfplan
 
-  # ==========================================
-  # PHASE 3: CONTAINER BUILD & ECS DEPLOY
-  # ==========================================
-  build_backend:
-    name: Build Backend Image
+  deploy:
+    name: Build & Deploy to ECS
     needs: infrastructure
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
-    outputs:
-      image: ${{ steps.build-backend.outputs.image }}
     steps:
       - uses: actions/checkout@v4
 
@@ -166,8 +171,7 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build, Tag, and Push Backend Image
-        id: build-backend
+      - name: Build, tag, and push backend image to Amazon ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
@@ -175,32 +179,9 @@ jobs:
         run: |
           docker build -t $ECR_REGISTRY/$ECR_BACKEND_REPO:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_BACKEND_REPO:$IMAGE_TAG
-          echo "image=$ECR_REGISTRY/$ECR_BACKEND_REPO:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "ECR_BACKEND_URL=$ECR_REGISTRY/$ECR_BACKEND_REPO" >> $GITHUB_ENV
 
-  build_frontend:
-    name: Build Frontend Image
-    needs: infrastructure
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    outputs:
-      image: ${{ steps.build-frontend.outputs.image }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build, Tag, and Push Frontend Image
-        id: build-frontend
+      - name: Build, tag, and push frontend image to Amazon ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
@@ -208,48 +189,48 @@ jobs:
         run: |
           docker build -t $ECR_REGISTRY/$ECR_FRONTEND_REPO:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_FRONTEND_REPO:$IMAGE_TAG
-          echo "image=$ECR_REGISTRY/$ECR_FRONTEND_REPO:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "ECR_FRONTEND_URL=$ECR_REGISTRY/$ECR_FRONTEND_REPO" >> $GITHUB_ENV
 
-  deploy:
-    name: Deploy Unified Service
-    needs: [build_backend, build_frontend]
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
+      - name: Download Backend Task Definition
+        env:
+          TASK_DEF_FAMILY: "shopsmart-backend-task"
+        run: |
+          aws ecs describe-task-definition --task-definition $TASK_DEF_FAMILY --query taskDefinition --output json > backend-task-def.json
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+      - name: Download Frontend Task Definition
+        env:
+          TASK_DEF_FAMILY: "shopsmart-frontend-task"
+        run: |
+          aws ecs describe-task-definition --task-definition $TASK_DEF_FAMILY --query taskDefinition --output json > frontend-task-def.json
 
       - name: Render Backend Task Definition
-        id: backend-task
+        id: task-def-backend
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: .github/shopsmart-task-def.json
+          task-definition: backend-task-def.json
           container-name: ${{ env.BACKEND_CONTAINER }}
-          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND_REPO }}:${{ github.sha }}
+          image: ${{ env.ECR_BACKEND_URL }}:${{ github.sha }}
 
       - name: Render Frontend Task Definition
-        id: frontend-task
+        id: task-def-frontend
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: ${{ steps.backend-task.outputs.task-definition }}
+          task-definition: frontend-task-def.json
           container-name: ${{ env.FRONTEND_CONTAINER }}
-          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPO }}:${{ github.sha }}
+          image: ${{ env.ECR_FRONTEND_URL }}:${{ github.sha }}
 
-      - name: Deploy Unified Task to ECS
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+      - name: Deploy Backend to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
-          task-definition: ${{ steps.frontend-task.outputs.task-definition }}
-          service: shopsmart-service
+          task-definition: ${{ steps.task-def-backend.outputs.task-definition }}
+          service: ${{ env.BACKEND_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: false
+
+      - name: Deploy Frontend to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def-frontend.outputs.task-definition }}
+          service: ${{ env.FRONTEND_SERVICE }}
           cluster: ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: false
