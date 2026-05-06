@@ -189,6 +189,12 @@ resource "aws_ecs_service" "backend_service" {
     assign_public_ip = true
   }
 
+  load_balancer {
+    target_group_arn = aws_lb_target_group.backend.arn
+    container_name   = "shopsmart-backend-container"
+    container_port   = 4000
+  }
+
   lifecycle {
     ignore_changes = [task_definition, desired_count]
   }
@@ -207,7 +213,97 @@ resource "aws_ecs_service" "frontend_service" {
     assign_public_ip = true
   }
 
+  load_balancer {
+    target_group_arn = aws_lb_target_group.frontend.arn
+    container_name   = "shopsmart-frontend-container"
+    container_port   = 3000
+  }
+
   lifecycle {
     ignore_changes = [task_definition, desired_count]
   }
+}
+
+# --- 11. Application Load Balancer ---
+resource "aws_security_group" "alb_sg" {
+  name        = "shopsmart-alb-sg"
+  description = "Allow inbound HTTP to ALB"
+  vpc_id      = data.aws_vpc.default.id
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_lb" "main" {
+  name               = "shopsmart-alb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb_sg.id]
+  subnets            = data.aws_subnets.default.ids
+}
+
+resource "aws_lb_target_group" "frontend" {
+  name        = "shopsmart-frontend-tg"
+  port        = 3000
+  protocol    = "HTTP"
+  vpc_id      = data.aws_vpc.default.id
+  target_type = "ip"
+  health_check {
+    path = "/"
+    port = "traffic-port"
+  }
+}
+
+resource "aws_lb_target_group" "backend" {
+  name        = "shopsmart-backend-tg"
+  port        = 4000
+  protocol    = "HTTP"
+  vpc_id      = data.aws_vpc.default.id
+  target_type = "ip"
+  health_check {
+    path = "/api/health"
+    port = "traffic-port"
+  }
+}
+
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.frontend.arn
+  }
+}
+
+resource "aws_lb_listener_rule" "backend" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 100
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.backend.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/api/*"]
+    }
+  }
+}
+
+output "alb_dns_name" {
+  value = aws_lb.main.dns_name
 }
