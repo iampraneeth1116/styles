@@ -24,6 +24,7 @@ RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV HOSTNAME="0.0.0.0"
 
 # Create non-root user
 RUN groupadd --system --gid 1001 nodejs && \
@@ -46,7 +47,7 @@ EXPOSE 3000
 ENV PORT=3000
 
 # Define healthcheck to meet rubric
-HEALTHCHECK --interval=30s --timeout=30s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=30s --start-period=30s --retries=3 \
   CMD curl -f http://localhost:3000/ || exit 1
 
 CMD ["node", "server.js"]
