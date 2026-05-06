@@ -13,6 +13,7 @@ COPY . .
 
 # Set dummy env vars for build if Next requires them
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_PUBLIC_API_URL=/api
 
 RUN npm run build
 
