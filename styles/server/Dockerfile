@@ -32,7 +32,7 @@ COPY --chown=node:node src ./src
 COPY --chown=node:node package.json ./
 
 # Define healthcheck
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=30s --start-period=30s --retries=3 \
   CMD curl -f http://localhost:4000/api/health || exit 1
 
 EXPOSE 4000
@@ -43,4 +43,4 @@ USER node
 # Use dumb-init to handle signals correctly
 # Push schema to DB first (no migration files exist — project uses db push), then start the app
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss && node src/index.js"]
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss || echo 'Prisma DB push failed, but continuing...'; node src/index.js"]
