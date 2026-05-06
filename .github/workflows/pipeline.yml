@@ -118,8 +118,8 @@ jobs:
       - name: Parse APP_ENV into Terraform vars
         run: |
           ENV_CONTENT="${{ secrets.APP_ENV }}"
-          DB_URL=$(echo "$ENV_CONTENT" | awk -F= '/^DATABASE_URL=/{print $2}' | head -1)
-          JWT=$(echo "$ENV_CONTENT" | awk -F= '/^JWT_SECRET=/{print $2}' | head -1 | tr -d "'\"")
+          DB_URL=$(echo "$ENV_CONTENT" | grep '^DATABASE_URL=' | sed 's/^DATABASE_URL=//' | head -1 | tr -d "'\"")
+          JWT=$(echo "$ENV_CONTENT" | grep '^JWT_SECRET=' | sed 's/^JWT_SECRET=//' | head -1 | tr -d "'\"")
           if [ -z "$DB_URL" ] || [ -z "$JWT" ]; then
             echo "Using defaults for terraform validation."
             DB_URL="postgresql://dummy:dummy@localhost/dummy"
